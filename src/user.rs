@@ -150,6 +150,38 @@ impl<Manager> User<Manager> {
             AuthTicket(auth_ticket)
         }
     }
+
+    pub fn request_encrypted_app_ticket(&self, mut data: Vec<u8>) {
+        unsafe {
+            sys::SteamAPI_ISteamUser_RequestEncryptedAppTicket(
+                self.user,
+                data.as_mut_ptr() as *mut ::std::ffi::c_void,
+                data.len() as i32,
+            );
+        }
+    }
+
+    pub fn get_encrypted_app_ticket(
+        &self,
+    ) -> Vec<u8> {
+        unsafe {
+            let mut ticket = vec![0; 2048];
+            let mut ticket_len = 0;
+            let success = sys::SteamAPI_ISteamUser_GetEncryptedAppTicket(
+                self.user,
+                ticket.as_mut_ptr() as *mut _,
+                2048,
+                &mut ticket_len,
+            );
+
+            if !success {
+                panic!("Couldn't acquire app ticket");
+            }
+
+            ticket.truncate(ticket_len as usize);
+            ticket
+        }
+    }
 }
 
 /// Errors from `begin_authentication_session`
@@ -234,6 +266,27 @@ unsafe impl Callback for AuthSessionTicketResponse {
         let val = &mut *(raw as *mut sys::GetAuthSessionTicketResponse_t);
         AuthSessionTicketResponse {
             ticket: AuthTicket(val.m_hAuthTicket),
+            result: if val.m_eResult == sys::EResult::k_EResultOK {
+                Ok(())
+            } else {
+                Err(val.m_eResult.into())
+            },
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct EncryptedAppTicketResponse {
+    pub result: SResult<()>,
+}
+
+unsafe impl Callback for EncryptedAppTicketResponse {
+    const ID: i32 = 163;
+    const SIZE: i32 = ::std::mem::size_of::<sys::EncryptedAppTicketResponse_t>() as i32;
+
+    unsafe fn from_raw(raw: *mut c_void) -> Self {
+        let val = &mut *(raw as *mut sys::EncryptedAppTicketResponse_t);
+        EncryptedAppTicketResponse {
             result: if val.m_eResult == sys::EResult::k_EResultOK {
                 Ok(())
             } else {
